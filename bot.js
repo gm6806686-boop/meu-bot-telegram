@@ -1,30 +1,21 @@
 const { Telegraf } = require('telegraf');
+const fetch = require('node-fetch');
 
 const bot = new Telegraf(process.env.BOT_TOKEN);
+const GEMINI_KEY = process.env.GEMINI_KEY;
 
 let dados = { financas: [], tarefas: [], diario: [] };
 
-bot.start((ctx) => ctx.reply('Olá! Sou seu assistente pessoal! 🤖\n\nComandos disponíveis:\n/ajuda - Ver todos os comandos'));
+bot.start((ctx) => ctx.reply('Olá! Sou seu assistente pessoal! 🤖\n\n/ajuda - Ver comandos'));
 
-bot.help((ctx) => ctx.reply(
-'📋 Comandos disponíveis:\n\n' +
-'💰 FINANÇAS:\n' +
-'/receita [valor] [descrição]\n' +
-'/despesa [valor] [descrição]\n' +
-'/saldo - Ver saldo atual\n\n' +
-'✅ TAREFAS:\n' +
-'/tarefa [texto] - Adicionar tarefa\n' +
-'/tarefas - Ver tarefas pendentes\n\n' +
-'📓 DIÁRIO:\n' +
-'/diario [texto] - Salvar anotação\n\n' +
-'🤖 IA:\n' +
-'Qualquer mensagem - Conversar com IA'
+bot.command('ajuda', (ctx) => ctx.reply(
+'📋 Comandos:\n\n💰 /receita 100 Salário\n💸 /despesa 50 Mercado\n📊 /saldo\n\n✅ /tarefa Comprar pão\n📋 /tarefas\n\n📓 /diario Hoje foi bom\n\n🤖 Qualquer texto = IA responde!'
 ));
 
 bot.command('saldo', (ctx) => {
-  const receitas = dados.financas.filter(t => t.tipo === 'receita').reduce((s,t) => s+t.valor, 0);
-  const despesas = dados.financas.filter(t => t.tipo === 'despesa').reduce((s,t) => s+t.valor, 0);
-  ctx.reply(`💰 Resumo financeiro:\n\n✅ Receitas: R$ ${receitas.toFixed(2)}\n❌ Despesas: R$ ${despesas.toFixed(2)}\n💵 Saldo: R$ ${(receitas-despesas).toFixed(2)}`);
+  const rec = dados.financas.filter(t=>t.tipo==='receita').reduce((s,t)=>s+t.valor,0);
+  const desp = dados.financas.filter(t=>t.tipo==='despesa').reduce((s,t)=>s+t.valor,0);
+  ctx.reply(`💰 Receitas: R$ ${rec.toFixed(2)}\n💸 Despesas: R$ ${desp.toFixed(2)}\n💵 Saldo: R$ ${(rec-desp).toFixed(2)}`);
 });
 
 bot.command('receita', (ctx) => {
@@ -32,7 +23,7 @@ bot.command('receita', (ctx) => {
   const valor = parseFloat(args[0]);
   const desc = args.slice(1).join(' ') || 'Sem descrição';
   if (isNaN(valor)) return ctx.reply('Use: /receita 100 Salário');
-  dados.financas.push({ tipo: 'receita', valor, desc, data: new Date().toLocaleDateString('pt-BR') });
+  dados.financas.push({tipo:'receita',valor,desc});
   ctx.reply(`✅ Receita de R$ ${valor.toFixed(2)} adicionada!\n📝 ${desc}`);
 });
 
@@ -41,45 +32,46 @@ bot.command('despesa', (ctx) => {
   const valor = parseFloat(args[0]);
   const desc = args.slice(1).join(' ') || 'Sem descrição';
   if (isNaN(valor)) return ctx.reply('Use: /despesa 50 Mercado');
-  dados.financas.push({ tipo: 'despesa', valor, desc, data: new Date().toLocaleDateString('pt-BR') });
-  ctx.reply(`❌ Despesa de R$ ${valor.toFixed(2)} registrada!\n📝 ${desc}`);
+  dados.financas.push({tipo:'despesa',valor,desc});
+  ctx.reply(`💸 Despesa de R$ ${valor.toFixed(2)} registrada!\n📝 ${desc}`);
 });
 
 bot.command('tarefa', (ctx) => {
   const texto = ctx.message.text.split(' ').slice(1).join(' ');
   if (!texto) return ctx.reply('Use: /tarefa Comprar pão');
-  dados.tarefas.push({ texto, feito: false });
-  ctx.reply(`✅ Tarefa adicionada:\n📌 ${texto}`);
+  dados.tarefas.push({texto,feito:false});
+  ctx.reply(`✅ Tarefa adicionada: ${texto}`);
 });
 
 bot.command('tarefas', (ctx) => {
-  const pendentes = dados.tarefas.filter(t => !t.feito);
-  if (pendentes.length === 0) return ctx.reply('🎉 Nenhuma tarefa pendente!');
-  ctx.reply('📋 Tarefas pendentes:\n\n' + pendentes.map((t,i) => `${i+1}. ${t.texto}`).join('\n'));
+  const p = dados.tarefas.filter(t=>!t.feito);
+  if (!p.length) return ctx.reply('🎉 Nenhuma tarefa pendente!');
+  ctx.reply('📋 Tarefas:\n\n'+p.map((t,i)=>`${i+1}. ${t.texto}`).join('\n'));
 });
 
 bot.command('diario', (ctx) => {
   const texto = ctx.message.text.split(' ').slice(1).join(' ');
-  if (!texto) return ctx.reply('Use: /diario Hoje foi um bom dia');
-  dados.diario.push({ texto, data: new Date().toLocaleDateString('pt-BR') });
+  if (!texto) return ctx.reply('Use: /diario Hoje foi bom');
+  dados.diario.push({texto,data:new Date().toLocaleDateString('pt-BR')});
   ctx.reply(`📓 Anotação salva!\n\n"${texto}"`);
 });
 
 bot.on('text', async (ctx) => {
-  ctx.reply('🤖 Processando...');
+  await ctx.reply('🤖 Pensando...');
   try {
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-api-key': process.env.CLAUDE_KEY, 'anthropic-version': '2023-06-01' },
-      body: JSON.stringify({ model: 'claude-haiku-4-5-20251001', max_tokens: 500, messages: [{ role: 'user', content: ctx.message.text }] })
+    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${GEMINI_KEY}`,{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({contents:[{parts:[{text:ctx.message.text}]}]})
     });
     const data = await res.json();
-    ctx.reply(data.content[0].text);
+    const resposta = data.candidates[0].content.parts[0].text;
+    ctx.reply(resposta);
   } catch(e) {
     ctx.reply('Erro ao conectar com a IA. Tente novamente.');
   }
 });
 
 bot.launch();
-process.once('SIGINT', () => bot.stop('SIGINT'));
-process.once('SIGTERM', () => bot.stop('SIGTERM'));
+process.once('SIGINT', ()=>bot.stop('SIGINT'));
+process.once('SIGTERM', ()=>bot.stop('SIGTERM'));
